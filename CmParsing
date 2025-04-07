@@ -1,0 +1,158 @@
+package com.FCAPS.model;
+
+import org.springframework.data.cassandra.core.mapping.PrimaryKey;
+import org.springframework.data.cassandra.core.mapping.Table;
+
+import java.util.Map;
+
+@Table("equipment")
+public class Equipment {
+
+    @PrimaryKey
+    private String equipName;
+
+    private Map<String, String> equipAttributes;
+
+    // Getters and Setters
+    public String getEquipName() { return equipName; }
+    public void setEquipName(String equipName) { this.equipName = equipName; }
+
+    public Map<String, String> getEquipAttributes() { return equipAttributes; }
+    public void setEquipAttributes(Map<String, String> equipAttributes) { this.equipAttributes = equipAttributes; }
+}
+
+
+
+package com.FCAPS.model;
+
+import org.springframework.data.cassandra.core.mapping.PrimaryKey;
+import org.springframework.data.cassandra.core.mapping.Table;
+
+@Table("port")
+public class Port {
+
+    @PrimaryKey
+    private String portName;
+
+    private String parent;
+
+    // Getters and Setters
+    public String getPortName() { return portName; }
+    public void setPortName(String portName) { this.portName = portName; }
+
+    public String getParent() { return parent; }
+    public void setParent(String parent) { this.parent = parent; }
+}
+
+
+
+
+
+package com.FCAPS.service;
+
+import com.FCAPS.model.Equipment;
+import com.FCAPS.model.Port;
+import com.FCAPS.repository.EquipmentRepository;
+import com.FCAPS.repository.PortRepository;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.util.*;
+
+import org.w3c.dom.*;
+import javax.xml.parsers.*;
+
+@Service
+public class ConfigManagementService {
+
+    @Autowired
+    private EquipmentRepository equipmentRepository;
+
+    @Autowired
+    private PortRepository portRepository;
+
+    public void parseAndStoreComponents(String filePath) {
+        try {
+            File xmlFile = new File(filePath);
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            dbFactory.setNamespaceAware(true);
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(xmlFile);
+
+            NodeList componentNodes = doc.getElementsByTagNameNS("*", "component");
+
+            for (int i = 0; i < componentNodes.getLength(); i++) {
+                Element component = (Element) componentNodes.item(i);
+                String name = component.getElementsByTagNameNS("*", "name").item(0).getTextContent();
+
+                // Handle Equipment
+                if (name.equals("amplifier1") || name.equals("slot-1")) {
+                    Equipment equipment = new Equipment();
+                    equipment.setEquipName(name);
+
+                    Map<String, String> attributes = new HashMap<>();
+                    NodeList stateNodes = component.getElementsByTagNameNS("*", "state");
+                    if (stateNodes.getLength() > 0) {
+                        Element state = (Element) stateNodes.item(0);
+                        Node cleiCodeNode = state.getElementsByTagNameNS("*", "clei-code").item(0);
+                        Node emptyNode = state.getElementsByTagNameNS("*", "empty").item(0);
+
+                        attributes.put("cleiCode", cleiCodeNode != null ? cleiCodeNode.getTextContent() : "");
+                        attributes.put("empty", emptyNode != null ? emptyNode.getTextContent() : "");
+                    }
+
+                    equipment.setEquipAttributes(attributes);
+                    equipmentRepository.save(equipment);
+                }
+
+                // Handle Ports
+                if (name.startsWith("amplifier1-1-line") || name.startsWith("amplifier1-1-sig")) {
+                    Port port = new Port();
+                    port.setPortName(name);
+
+                    NodeList stateNodes = component.getElementsByTagNameNS("*", "state");
+                    if (stateNodes.getLength() > 0) {
+                        Element state = (Element) stateNodes.item(0);
+                        Node parentNode = state.getElementsByTagNameNS("*", "parent").item(0);
+                        port.setParent(parentNode != null ? parentNode.getTextContent() : "");
+                    }
+
+                    portRepository.save(port);
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+
+
+
+package com.FCAPS.controller;
+
+import com.FCAPS.service.ConfigManagementService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/config")
+public class ConfigController {
+
+    @Autowired
+    private ConfigManagementService configManagementService;
+
+    @PostMapping("/upload")
+    public String uploadXmlAndPersist(@RequestParam String filePath) {
+        configManagementService.parseAndStoreComponents(filePath);
+        return "Data parsed and stored successfully.";
+    }
+}
+
+
+
+
+
