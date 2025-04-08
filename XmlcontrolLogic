@@ -1,0 +1,17 @@
+@PostMapping("/parse")
+public ResponseEntity<String> parseXml(@RequestBody String xmlData) {
+    xmlParserService.processXml(xmlData); // old method
+    return ResponseEntity.ok("Parsed successfully.");
+}
+
+@PostMapping(value = "/upload", consumes = "multipart/form-data")
+public ResponseEntity<String> uploadXml(@RequestParam("file") MultipartFile file) {
+    try {
+        String xmlData = new String(file.getBytes());
+        xmlParserService.processXml(xmlData); // same method here too
+        return ResponseEntity.ok("File uploaded and parsed successfully.");
+    } catch (IOException e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                             .body("Error reading XML file: " + e.getMessage());
+    }
+}
