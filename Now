@@ -1,0 +1,221 @@
+
+@Table
+public class Equipment {
+    @PrimaryKey
+    private String equipId;
+    private String equipName;
+    private String equipType;
+    private Map<String, String> equipAttributes;
+}
+
+
+
+
+
+
+
+
+
+
+@Table
+public class Port {
+    @PrimaryKey
+    private String portName;
+    private String portType;
+    private String parent;
+}
+
+
+
+
+
+@RestController
+@RequestMapping("/api/xml")
+public class XmlController {
+
+    @Autowired
+    private XmlProcessingService xmlService;
+
+    @PostMapping(consumes = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<String> handleXml(@RequestBody XmlWrapper xmlWrapper) {
+        xmlService.processXml(xmlWrapper);
+        return ResponseEntity.ok("Processed successfully");
+    }
+}
+
+
+
+
+// File: XmlParserApplication.java package com.example.xmlparser;
+
+import org.springframework.boot.SpringApplication; import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication public class XmlParserApplication { public static void main(String[] args) { SpringApplication.run(XmlParserApplication.class, args); } }
+
+// File: controller/XmlController.java package com.example.xmlparser.controller;
+
+import com.example.xmlparser.dto.XmlWrapper; import com.example.xmlparser.service.XmlProcessingService; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.http.MediaType; import org.springframework.http.ResponseEntity; import org.springframework.web.bind.annotation.*;
+
+@RestController @RequestMapping("/api/xml") public class XmlController {
+
+@Autowired
+private XmlProcessingService xmlService;
+
+@PostMapping(consumes = MediaType.APPLICATION_XML_VALUE)
+public ResponseEntity<String> handleXml(@RequestBody XmlWrapper xmlWrapper) {
+    xmlService.processXml(xmlWrapper);
+    return ResponseEntity.ok("Processed successfully");
+}
+
+}
+
+// File: model/Equipment.java package com.example.xmlparser.model;
+
+import org.springframework.data.cassandra.core.mapping.PrimaryKey; import org.springframework.data.cassandra.core.mapping.Table;
+
+import java.util.Map;
+
+@Table public class Equipment { @PrimaryKey private String equipId; private String equipName; private String equipType; private Map<String, String> equipAttributes;
+
+// Getters and Setters
+
+}
+
+// File: model/Port.java package com.example.xmlparser.model;
+
+import org.springframework.data.cassandra.core.mapping.PrimaryKey; import org.springframework.data.cassandra.core.mapping.Table;
+
+@Table public class Port { @PrimaryKey private String portName; private String portType; private String parent;
+
+// Getters and Setters
+
+}
+
+// File: repository/EquipmentRepository.java package com.example.xmlparser.repository;
+
+import com.example.xmlparser.model.Equipment; import org.springframework.data.cassandra.repository.CassandraRepository;
+
+public interface EquipmentRepository extends CassandraRepository<Equipment, String> {}
+
+// File: repository/PortRepository.java package com.example.xmlparser.repository;
+
+import com.example.xmlparser.model.Port; import org.springframework.data.cassandra.repository.CassandraRepository;
+
+public interface PortRepository extends CassandraRepository<Port, String> {}
+
+// File: dto/XmlWrapper.java package com.example.xmlparser.dto;
+
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper; import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty; import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
+
+import java.util.List;
+
+@JacksonXmlRootElement(localName = "components") public class XmlWrapper {
+
+@JacksonXmlElementWrapper(useWrapping = false)
+@JacksonXmlProperty(localName = "component")
+private List<XmlComponent> components;
+
+// Getters and Setters
+
+}
+
+// File: dto/XmlComponent.java package com.example.xmlparser.dto;
+
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+
+import java.util.List;
+
+public class XmlComponent { @JacksonXmlProperty(localName = "name") private String name;
+
+private XmlState state;
+private XmlProperties properties;
+
+// Getters and Setters
+
+}
+
+// File: dto/XmlState.java package com.example.xmlparser.dto;
+
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+
+public class XmlState { @JacksonXmlProperty(localName = "type") private String type; @JacksonXmlProperty(localName = "id") private String id; private String location; private String mfgName; private String mfgDate; private String serialNo; private String partNo; private String cleiCode; private String parent;
+
+// Getters and Setters
+
+}
+
+// File: dto/XmlProperties.java package com.example.xmlparser.dto;
+
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper; import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+
+import java.util.List;
+
+public class XmlProperties { @JacksonXmlElementWrapper(useWrapping = false) @JacksonXmlProperty(localName = "property") private List<XmlProperty> property;
+
+// Getters and Setters
+
+}
+
+// File: dto/XmlProperty.java package com.example.xmlparser.dto;
+
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+
+public class XmlProperty { @JacksonXmlProperty(localName = "name") private String name; @JacksonXmlProperty(localName = "value") private String value;
+
+// Getters and Setters
+
+}
+
+// File: service/XmlProcessingService.java package com.example.xmlparser.service;
+
+import com.example.xmlparser.dto.*; import com.example.xmlparser.model.Equipment; import com.example.xmlparser.model.Port; import com.example.xmlparser.repository.EquipmentRepository; import com.example.xmlparser.repository.PortRepository; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+
+@Service public class XmlProcessingService {
+
+@Autowired
+private EquipmentRepository equipmentRepo;
+
+@Autowired
+private PortRepository portRepo;
+
+public void processXml(XmlWrapper wrapper) {
+    for (XmlComponent component : wrapper.getComponents()) {
+        String type = component.getState().getType();
+        if (type.contains("CHASSIS")) {
+            Equipment equipment = new Equipment();
+            equipment.setEquipId(component.getState().getId());
+            equipment.setEquipName(component.getName());
+            equipment.setEquipType(type);
+
+            HashMap<String, String> attrs = new HashMap<>();
+            attrs.put("location", component.getState().getLocation());
+            attrs.put("mfg-name", component.getState().getMfgName());
+            attrs.put("mfg-date", component.getState().getMfgDate());
+            attrs.put("serial-no", component.getState().getSerialNo());
+            attrs.put("part-no", component.getState().getPartNo());
+            attrs.put("clei-code", component.getState().getCleiCode());
+
+            if (component.getProperties() != null) {
+                for (XmlProperty prop : component.getProperties().getProperty()) {
+                    attrs.put(prop.getName(), prop.getValue());
+                }
+            }
+
+            equipment.setEquipAttributes(attrs);
+            equipmentRepo.save(equipment);
+
+        } else if (type.contains("PORT")) {
+            Port port = new Port();
+            port.setPortName(component.getName());
+            port.setPortType(type);
+            port.setParent(component.getState().getParent());
+            portRepo.save(port);
+        }
+    }
+}
+
+}
+
+
