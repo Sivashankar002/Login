@@ -1,0 +1,171 @@
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.io.InputStream;
+import java.util.*;
+
+@Service
+public class ConfigParserService {
+
+    @Autowired
+    private EquipmentRepository equipmentRepo;
+
+    @Autowired
+    private PortRepository portRepo;
+
+    public void parseAndSave(InputStream xmlStream) throws Exception {
+        XmlMapper mapper = new XmlMapper();
+        XmlWrapper dataWrapper = mapper.readValue(xmlStream, XmlWrapper.class);
+
+        for (Component component : dataWrapper.getComponents().getComponentList()) {
+            String type = component.getState().getType();
+            if (type != null && type.toLowerCase().contains("port")) {
+                Port port = new Port();
+                port.setPortName(component.getName());
+                port.setPortType("PORT");
+                port.setParent(component.getState().getParent());
+                portRepo.save(port);
+            } else {
+                Equipment equipment = new Equipment();
+                equipment.setEquipId(component.getState().getId());
+                equipment.setEquipName(component.getName());
+                equipment.setEquipType(type);
+
+                Map<String, String> attributes = new HashMap<>();
+                attributes.put("location", component.getState().getLocation());
+                attributes.put("mfg-name", component.getState().getMfgName());
+                attributes.put("mfg-date", component.getState().getMfgDate());
+                attributes.put("serial-no", component.getState().getSerialNo());
+                attributes.put("part-no", component.getState().getPartNo());
+                attributes.put("clei-code", component.getState().getCleiCode());
+
+                equipment.setEquipAttributes(attributes);
+                equipmentRepo.save(equipment);
+            }
+        }
+    }
+}
+
+
+
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+@JacksonXmlRootElement(localName = "rpc-reply")
+public class XmlWrapper {
+    @JsonProperty("data")
+    private Data data;
+
+    public Components getComponents() {
+        return data.components;
+    }
+
+    public static class Data {
+        @JsonProperty("components")
+        public Components components;
+    }
+}
+
+
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.List;
+
+public class Components {
+    @JsonProperty("component")
+    private List<Component> componentList;
+
+    public List<Component> getComponentList() {
+        return componentList;
+    }
+
+    public void setComponentList(List<Component> componentList) {
+        this.componentList = componentList;
+    }
+}
+
+
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class Component {
+    private String name;
+    private Config config;
+    private State state;
+
+    public String getName() {
+        return name;
+    }
+
+    public Config getConfig() {
+        return config;
+    }
+
+    public State getState() {
+        return state;
+    }
+
+    public static class Config {
+        private String name;
+        public String getName() { return name; }
+    }
+
+    public static class State {
+        private String type;
+        private String id;
+        private String location;
+
+        @JsonProperty("mfg-name")
+        private String mfgName;
+        @JsonProperty("mfg-date")
+        private String mfgDate;
+        @JsonProperty("serial-no")
+        private String serialNo;
+        @JsonProperty("part-no")
+        private String partNo;
+        @JsonProperty("clei-code")
+        private String cleiCode;
+        private String parent;
+
+        // Getters
+        public String getType() { return type; }
+        public String getId() { return id; }
+        public String getLocation() { return location; }
+        public String getMfgName() { return mfgName; }
+        public String getMfgDate() { return mfgDate; }
+        public String getSerialNo() { return serialNo; }
+        public String getPartNo() { return partNo; }
+        public String getCleiCode() { return cleiCode; }
+        public String getParent() { return parent; }
+    }
+}
+
+
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+@RestController
+@RequestMapping("/config")
+public class ConfigMgmtController {
+
+    @Autowired
+    private ConfigParserService configService;
+
+    @PostMapping("/upload")
+    public String uploadXml(@RequestParam("file") MultipartFile file) {
+        try {
+            configService.parseAndSave(file.getInputStream());
+            return "XML parsed and data saved to Cassandra.";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "Error occurred: " + e.getMessage();
+        }
+    }
+}
+
+
+
+
+
